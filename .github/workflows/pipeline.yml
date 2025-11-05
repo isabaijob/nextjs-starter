@@ -1,0 +1,57 @@
+name: Build and Deploy Next.js to Azure App Service
+
+on:
+  push:
+    branches: [ main ]  # Change to your default branch if needed
+  workflow_dispatch:    # Allows manual trigger
+
+env:
+  AZURE_WEBAPP_NAME: app-io-scrd-dev  # Your App Service name
+  NODE_VERSION: '22'                   # Matches your Azure Node version
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout code
+      - uses: actions/checkout@v4
+
+      # 2. Setup Node.js
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'  # Cache node_modules for faster runs
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: |
+          npm ci  # Faster than npm install
+
+      # 4. Build with Turbopack
+      - name: Build with Turbopack
+        run: |
+          npm run build  # Runs "next build --turbo"
+
+      # 5. Prepare standalone deployment (move assets)
+      - name: Prepare standalone package
+        run: |
+          # Copy public assets to standalone
+          cp -r public .next/standalone/
+          # Copy .next/static to standalone (for client bundles)
+          cp -r .next/static .next/standalone/.next/static
+
+      # 6. Zip the deployable package
+      - name: Zip deployment package
+        run: |
+          cd .next/standalone
+          zip -r ../deploy.zip .  # Creates deploy.zip in root
+
+      # 7. Deploy to Azure App Service
+      - name: Deploy to Azure
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: .next/deploy.zip
